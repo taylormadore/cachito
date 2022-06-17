@@ -6,6 +6,7 @@ import tempfile
 from collections import OrderedDict
 from copy import deepcopy
 from datetime import date, datetime
+from time import sleep
 from typing import Any, Dict, Union
 
 import flask
@@ -551,6 +552,8 @@ def patch_request(request_id):
             "Deleting the temporary files used to create the bundle at %s", bundle_dir
         )
         try:
+            flask.current_app.logger.info("SLEEPING FOR 5 MIN")
+            sleep(60 * 5)
             bundle_dir.rmtree()
         except:  # noqa E722
             flask.current_app.logger.exception(
