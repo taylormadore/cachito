@@ -540,11 +540,6 @@ def _vet_local_deps(dependencies: List[dict], module_name: str, allowed_patterns
                 name,
                 version,
             )
-            if ".." in Path(version).parts:
-                raise UnsupportedFeature(
-                    f"Path to gomod dependency contains '..': {version}. "
-                    "Cachito does not support this case."
-                )
             _fail_unless_allowed(module_name, name, allowed_patterns)
         elif version.startswith("/") or PureWindowsPath(version).root:
             # This will disallow paths starting with '/', '\' or '<drive letter>:\'

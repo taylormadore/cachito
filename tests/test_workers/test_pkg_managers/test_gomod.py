@@ -849,17 +849,6 @@ def test_vet_local_deps_abspath(platform_specific_path):
         _vet_local_deps(dependencies, "some-module", [])
 
 
-@pytest.mark.parametrize("path", ["../local/path", "./local/../path"])
-def test_vet_local_deps_parent_dir(path):
-    dependencies = [{"name": "foo", "version": path}]
-
-    expect_error = re.escape(
-        f"Path to gomod dependency contains '..': {path}. Cachito does not support this case."
-    )
-    with pytest.raises(UnsupportedFeature, match=expect_error):
-        _vet_local_deps(dependencies, "some-module", [])
-
-
 @pytest.mark.parametrize(
     "module_name, package_name, allowed_patterns, expect_error",
     [

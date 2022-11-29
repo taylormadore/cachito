@@ -4,12 +4,22 @@ import os
 from pathlib import Path
 
 from cachito.common.packages_data import PackagesData
-from cachito.errors import FileAccessError, GoModError, InvalidRepoStructure, UnsupportedFeature
+from cachito.errors import (
+    FileAccessError,
+    GoModError,
+    InvalidRepoStructure,
+    InvalidRequestData,
+    UnsupportedFeature,
+)
 from cachito.workers import run_cmd
 from cachito.workers.config import get_worker_config
 from cachito.workers.paths import RequestBundleDir
 from cachito.workers.pkg_managers.general import update_request_env_vars
-from cachito.workers.pkg_managers.gomod import path_to_subpackage, resolve_gomod
+from cachito.workers.pkg_managers.gomod import (
+    match_parent_module,
+    path_to_subpackage,
+    resolve_gomod,
+)
 from cachito.workers.tasks.celery import app
 from cachito.workers.tasks.utils import get_request, runs_if_request_in_progress, set_request_state
 
@@ -152,6 +162,26 @@ def fetch_gomod_source(request_id, dep_replacements=None, package_configs=None):
             pkg_info = package["pkg"]
             package_subpath = _package_subpath(module_info["name"], pkg_info["name"], subpath)
             packages_json_data.add_package(pkg_info, package_subpath, package.get("pkg_deps", []))
+
+    modules = [
+        package["name"] for package in packages_json_data.packages if package["type"] == "gomod"
+    ]
+
+    # verify that this request includes any modules replaced by a reference to a parent dir
+    for package in packages_json_data.packages:
+        for dependency in package.get("dependencies", []):
+            if dependency["version"] and ".." in Path(dependency["version"]).parts:
+                dep_normpath = os.path.normpath(
+                    os.path.join(package["name"], dependency["version"])
+                )
+                matching_module_name = match_parent_module(dep_normpath, modules)
+                if matching_module_name is None:
+                    raise InvalidRequestData(
+                        (
+                            f"Could not find a Go module in this request containing {normpath} "
+                            f"while processing dependency {dependency} of {package['name']}."
+                        )
+                    )
 
     packages_json_data.write_to_file(bundle_dir.gomod_packages_data)
 
