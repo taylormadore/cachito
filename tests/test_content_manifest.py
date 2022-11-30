@@ -986,3 +986,94 @@ def test_top_level_purl_conversion_bogus(default_request):
     msg = "'bogus' is not a valid top level package"
     with pytest.raises(ContentManifestError, match=msg):
         to_top_level_purl(pkg, default_request)
+
+
+def test_replace_gomod_parent_dir_dependency(default_request):
+    """
+    Test gomod local dependency replacements where the replacement module refers
+    to a parent directory.
+    """
+    packages_json = [
+        {
+            "name": "example.com/org/parent_module",
+            "type": "gomod",
+            "version": "1.1.1",
+            "dependencies": [],
+        },
+        {
+            "name": "example.com/org/parent_module/sub_module",
+            "type": "gomod",
+            "version": "2.2.2",
+            "dependencies": [
+                {
+                    "name": "example.com/org/parent_module",
+                    "type": "gomod",
+                    "version": "../",
+                },
+            ],
+        },
+        {
+            "name": "example.com/org/parent_module/sub_module",
+            "type": "go-package",
+            "version": "2.2.2",
+            "dependencies": [
+                {
+                    "name": "example.com/org/parent_module/foo-package",
+                    "type": "go-package",
+                    "version": "../foo-package",
+                },
+            ],
+        },
+    ]
+
+    packages = _load_packages_from_json(packages_json)
+    cm = ContentManifest(default_request, packages)
+    cm.to_json()
+
+    assert cm._gomod_data == {
+        "example.com/org/parent_module": {
+            "purl": "pkg:golang/example.com%2Forg%2Fparent_module@1.1.1",
+            "dependencies": [],
+        },
+        "example.com/org/parent_module/sub_module": {
+            "purl": "pkg:golang/example.com%2Forg%2Fparent_module%2Fsub_module@2.2.2",
+            "dependencies": [{"purl": "pkg:golang/example.com%2Forg%2Fparent_module@1.1.1"}],
+        },
+    }
+    assert cm._gopkg_data == {
+        packages[2]: {
+            "purl": "pkg:golang/example.com%2Forg%2Fparent_module%2Fsub_module@2.2.2",
+            "dependencies": [
+                {"purl": "pkg:golang/example.com%2Forg%2Fparent_module%2Ffoo-package@1.1.1"}
+            ],
+            "sources": [{"purl": "pkg:golang/example.com%2Forg%2Fparent_module@1.1.1"}],
+        },
+    }
+
+
+def test_replace_missing_gomod_parent_dir_dependency(app, default_request):
+    """
+    Test gomod local dependency replacements where the replacement module
+    is not part of this cachito request
+    """
+    packages_json = [
+        {
+            "name": "example.com/org/parent_module/sub_module",
+            "type": "gomod",
+            "version": "2.2.2",
+            "dependencies": [
+                {
+                    "name": "example.com/org/parent_module",
+                    "type": "gomod",
+                    "version": "../",
+                },
+            ],
+        },
+    ]
+
+    packages = _load_packages_from_json(packages_json)
+    cm = ContentManifest(default_request, packages)
+    msg = "There is no Go module containing example.com/org/parent_module in this request"
+
+    with pytest.raises(ContentManifestError, match=msg):
+        cm.to_json()

@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
 from copy import deepcopy
+from pathlib import Path
 from typing import List, Optional
 
 import flask
 
 from cachito.common.utils import get_repo_name
+from cachito.errors import ContentManifestError
 from cachito.web.purl import (
     replace_parent_purl_gopkg,
     replace_parent_purl_placeholder,
@@ -71,6 +74,7 @@ class ContentManifest:
         :param Dependency dependency: the gomod package dependency to process
         """
         if dependency.type == "gomod":
+            self._replace_gomod_parent_dir_dependency(package, dependency)
             parent_purl = self._gomod_data[package.name]["purl"]
             dep_purl = to_purl(dependency)
             dep_purl = replace_parent_purl_placeholder(dep_purl, parent_purl)
@@ -85,6 +89,7 @@ class ContentManifest:
         :param Dependency dependency: the go-package package dependency to process
         """
         if dependency.type == "go-package":
+            self._replace_gomod_parent_dir_dependency(package, dependency)
             icm_dependency = {"purl": to_purl(dependency)}
             self._gopkg_data[package]["dependencies"].append(icm_dependency)
 
@@ -174,6 +179,35 @@ class ContentManifest:
             icm_dependency = {"purl": dep_purl}
             self._rubygems_data[package]["sources"].append(icm_dependency)
             self._rubygems_data[package]["dependencies"].append(icm_dependency)
+
+    def _replace_gomod_parent_dir_dependency(
+        self, package: "Package", dependency: "Package"
+    ) -> None:
+        """
+        Replace the name and version of a dependency located in a parent directory.
+
+        :param Package package: the package to process
+        :param Package dependency: the dependency to process
+        """
+        if dependency.version and ".." in Path(dependency.version).parts:
+            dep_normpath = os.path.normpath(os.path.join(package.name, dependency.version))
+            modules = {
+                package.name: package for package in self.packages if package.type == "gomod"
+            }
+            module_name = gomod.match_parent_module(dep_normpath, modules.keys())
+
+            if module_name is None:
+                raise ContentManifestError(
+                    (f"There is no Go module containing {dep_normpath} in this request")
+                )
+
+            module = modules[module_name]
+            if dependency.type == "gomod":
+                dependency.name = module.name
+                dependency.version = module.version
+            elif dependency.type == "go-package":
+                dependency.name = dep_normpath
+                dependency.version = module.version
 
     def to_json(self):
         """
